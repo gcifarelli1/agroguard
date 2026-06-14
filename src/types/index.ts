@@ -15,6 +15,7 @@ export interface User {
 export interface Plant {
   id: string;
   name: string;
+  location?: string;
   silos: string[];
 }
 
@@ -36,6 +37,8 @@ export interface Silo {
   capacity: number;
   currentLevel: number;
   nodes: SensorNode[];
+  cerealType?: string;
+  layerCount?: number;
 }
 
 export interface AlertEvent {
@@ -60,4 +63,13 @@ export interface InjectionParams {
   z: number;
   type: AlertType;
   intensity: AnomalyIntensity;
+}
+
+export interface Cereal {
+  id: string;
+  name: string;
+  tempOptimal: number;
+  tempWarning: number;
+  humOptimal: number;
+  humWarning: number;
 }

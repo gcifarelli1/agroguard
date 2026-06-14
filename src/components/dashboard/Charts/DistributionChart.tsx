@@ -1,5 +1,6 @@
 import { Silo } from '@/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import ChartTooltip from './ChartTooltip';
 
 interface DistributionChartProps {
   silo: Silo;
@@ -33,14 +34,7 @@ export default function DistributionChart({ silo }: DistributionChartProps) {
               <Cell key={`cell-${index}`} fill={entry.color} />
             ))}
           </Pie>
-          <Tooltip
-            contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
-              fontSize: '12px',
-            }}
-          />
+          <Tooltip content={<ChartTooltip />} />
           <Legend
             wrapperStyle={{ fontSize: '10px' }}
             formatter={(value) => <span style={{ color: 'hsl(var(--foreground))' }}>{value}</span>}

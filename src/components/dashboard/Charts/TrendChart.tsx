@@ -1,6 +1,7 @@
 import { Silo } from '@/types';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useMemo } from 'react';
+import ChartTooltip from './ChartTooltip';
 
 interface TrendChartProps {
   silo: Silo;
@@ -36,14 +37,7 @@ export default function TrendChart({ silo }: TrendChartProps) {
             tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
             axisLine={{ stroke: 'hsl(var(--border))' }}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
-              fontSize: '12px',
-            }}
-          />
+          <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1 }} />
           <Line
             type="monotone"
             dataKey="temperature"

@@ -1,0 +1,34 @@
+[
+  {
+    "id": "trigo",
+    "name": "Trigo",
+    "tempOptimal": 17.0,
+    "tempWarning": 24.0,
+    "humOptimal": 13.0,
+    "humWarning": 15.0
+  },
+  {
+    "id": "maiz",
+    "name": "Maíz",
+    "tempOptimal": 18.0,
+    "tempWarning": 25.0,
+    "humOptimal": 14.0,
+    "humWarning": 16.0
+  },
+  {
+    "id": "soja",
+    "name": "Soja",
+    "tempOptimal": 16.0,
+    "tempWarning": 23.0,
+    "humOptimal": 12.0,
+    "humWarning": 14.0
+  },
+  {
+    "id": "girasol",
+    "name": "Girasol",
+    "tempOptimal": 15.0,
+    "tempWarning": 22.0,
+    "humOptimal": 10.0,
+    "humWarning": 12.0
+  }
+]

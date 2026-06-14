@@ -3,11 +3,12 @@ import { useStore } from '@/store/useStore';
 import { mockPlants } from '@/data/mockData';
 import { THRESHOLDS } from '@/data/thresholds';
 import { cn } from '@/utils/helpers';
-import { Thermometer, Droplets, Volume2, ChevronDown, MapPin, Building2 } from 'lucide-react';
+import { Thermometer, Droplets, Volume2, ChevronDown, MapPin, Building2, Shield } from 'lucide-react';
 
 interface SidebarProps {
   silos: Silo[];
   selectedSiloId: string | null;
+  onNavigateToAdmin: () => void;
 }
 
 function getSiloAvgMetrics(silo: Silo) {
@@ -21,7 +22,7 @@ function getSiloAvgMetrics(silo: Silo) {
   };
 }
 
-export default function Sidebar({ silos, selectedSiloId }: SidebarProps) {
+export default function Sidebar({ silos, selectedSiloId, onNavigateToAdmin }: SidebarProps) {
   const { currentUser, selectedPlantId, setSelectedPlantId, setSelectedSiloId } = useStore();
 
   return (
@@ -132,6 +133,14 @@ export default function Sidebar({ silos, selectedSiloId }: SidebarProps) {
           })}
         </div>
       </div>
+
+      <button
+        onClick={onNavigateToAdmin}
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 hover:border-primary/40 hover:from-primary/20 hover:to-primary/10 transition-all text-xs text-foreground group"
+      >
+        <Shield className="w-3.5 h-3.5 text-primary" />
+        <span className="font-medium">Panel de Administración</span>
+      </button>
 
       <div className="mt-auto pt-3 border-t border-border/50 space-y-1.5">
         <div className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1.5">

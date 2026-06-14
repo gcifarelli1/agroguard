@@ -1,0 +1,22 @@
+[
+  {
+    "id": "PLANT_TANDIL",
+    "name": "Sede Central Tandil",
+    "location": "Tandil, Buenos Aires",
+    "silos": [
+      "SILO_T1",
+      "SILO_T2",
+      "SILO_T3",
+      "SILO_T4"
+    ]
+  },
+  {
+    "id": "PLANT_JUAREZ",
+    "name": "Sucursal Benito Juárez",
+    "location": "Benito Juárez, Buenos Aires",
+    "silos": [
+      "SILO_J1",
+      "SILO_J2"
+    ]
+  }
+]

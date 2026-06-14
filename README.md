@@ -17,24 +17,8 @@ Este proyecto es una **Single Page Application (SPA)** que simula un ecosistema 
 - Recibir **alertas automáticas** cuando las métricas superan umbrales críticos.
 - Inyectar **anomalías manuales** para demostraciones.
 - Simular acciones de **mitigación** (ventilación, tratamiento focalizado).
-- Gestionar **múltiples plantas** con control de acceso por roles (RBAC simulado).
+- Gestionar **múltiples plantas** con control de acceso por roles (RBAC simul
 
----
-
-## Stack Tecnológico
-
-| Capa | Tecnología |
-|------|-----------|
-| Framework | **React 18** + **Vite 5** |
-| Lenguaje | **TypeScript 5** |
-| Estilos | **Tailwind CSS 3** |
-| Estado Global | **Zustand** |
-| Render 3D | **Three.js** + **React Three Fiber** + **@react-three/drei** |
-| Gráficos | **Recharts** |
-| Iconos | **Lucide React** |
-| Persistencia | **localStorage** (sesión + historial de alertas, máx 10) |
-
----
 
 ## Instalación y uso
 
@@ -70,6 +54,21 @@ El servidor estará disponible en `http://localhost:5173/`.
 
 ---
 
+## Stack Tecnológico
+
+| Capa | Tecnología |
+|------|-----------|
+| Framework | **React 18** + **Vite 5** |
+| Lenguaje | **TypeScript 5** |
+| Estilos | **Tailwind CSS 3** |
+| Estado Global | **Zustand** |
+| Render 3D | **Three.js** + **React Three Fiber** + **@react-three/drei** |
+| Gráficos | **Recharts** |
+| Iconos | **Lucide React** |
+| Persistencia | **localStorage** (sesión + historial de alertas, máx 10) |
+
+---
+
 ## Estructura del Proyecto
 
 ```
@@ -88,8 +87,6 @@ agroguard/
 │   ├── utils/           # Utilidades (cn, formatDate, etc.)
 │   ├── App.tsx
 │   └── main.tsx
-├── PRD.md               # Product Requirement Document
-├── TASKS.md             # Lista de tareas y mejoras
 └── package.json
 ```
 
@@ -137,8 +134,6 @@ Dos roles disponibles:
 ---
 
 ## Documentación Adicional
-
-- 📄 [`PRD.md`](./PRD.md) - Product Requirement Document completo
 - 📋 [`project_description.md`](./project_description.md) - Especificación técnica original
 
 ---

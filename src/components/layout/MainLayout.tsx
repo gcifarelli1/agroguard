@@ -4,7 +4,11 @@ import Sidebar from './Sidebar';
 import Dashboard from '@/components/dashboard/Dashboard';
 import { LogOut, RotateCcw, Activity, Wifi } from 'lucide-react';
 
-export default function MainLayout() {
+interface MainLayoutProps {
+  onNavigateToAdmin: () => void;
+}
+
+export default function MainLayout({ onNavigateToAdmin }: MainLayoutProps) {
   const { currentUser, selectedPlantId, selectedSiloId, silos, logout, resetMVP } = useStore();
 
   const visibleSilos = getSilosForPlant(
@@ -68,7 +72,7 @@ export default function MainLayout() {
       </header>
 
       <div className="flex-1 flex relative">
-        <Sidebar silos={visibleSilos} selectedSiloId={selectedSiloId} />
+        <Sidebar silos={visibleSilos} selectedSiloId={selectedSiloId} onNavigateToAdmin={onNavigateToAdmin} />
 
         <main className="flex-1 p-4 overflow-auto relative">
           <Dashboard />

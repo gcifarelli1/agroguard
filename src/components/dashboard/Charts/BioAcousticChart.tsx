@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
+import ChartTooltip from './ChartTooltip';
 
 interface BioAcousticChartProps {
   silo: {
@@ -10,7 +11,7 @@ interface BioAcousticChartProps {
 
 export default function BioAcousticChart({ silo }: BioAcousticChartProps) {
   const data = useMemo(() => {
-    return silo.nodes.slice(0, 8).map((node) => ({
+    return silo.nodes.map((node) => ({
       name: node.id.split('-').pop(),
       dB: parseFloat(node.metrics.acousticLevel.toFixed(1)),
       color:
@@ -35,14 +36,7 @@ export default function BioAcousticChart({ silo }: BioAcousticChartProps) {
             tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
             axisLine={{ stroke: 'hsl(var(--border))' }}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
-              fontSize: '12px',
-            }}
-          />
+          <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
           <Bar dataKey="dB" radius={[4, 4, 0, 0]}>
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.color} />

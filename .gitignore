@@ -42,10 +42,9 @@ Thumbs.db
 
 # Agents (local)
 .agents/
+.claude/
 
 # Aditional files
 PRD.md
 TASKS.md
-
-# Windows NTFS alternate data streams
-*Zone.Identifier
+reports/

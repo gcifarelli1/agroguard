@@ -6,8 +6,23 @@ import { AlertEvent } from '@/types';
 const SIMULATION_INTERVAL = 3000;
 const ANOMALY_PROBABILITY = 0.01;
 
+// Baseline values around which metrics naturally fluctuate (mean-reverting center)
+const BASELINES = {
+  temperature: 15.5,  // midpoint of 15-17 range, well below optimal=17
+  humidity: 11.5,     // midpoint of 11-12.5 range, well below optimal=13
+  acousticLevel: 8.5,  // midpoint of 8-10 range, well below optimal=12
+};
+
+// Mean-reversion factor (0.05 = 5% pull back toward baseline each tick)
+// Makes the simulation physically realistic (thermal inertia of grain mass)
+const REVERSION_FACTOR = 0.05;
+
 function generateAlertId(): string {
   return `alert-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+}
+
+function meanRevertingNoise(current: number, baseline: number, noiseStdDev: number): number {
+  return current + (baseline - current) * REVERSION_FACTOR + gaussianNoise(noiseStdDev);
 }
 
 export default function SimulationEngine() {
@@ -29,9 +44,9 @@ export default function SimulationEngine() {
       const updatedSilos = currentSilos.map((silo) => {
         const updatedNodes = silo.nodes.map((node) => {
           const newMetrics = {
-            temperature: Math.max(0, node.metrics.temperature + gaussianNoise(0.2)),
-            humidity: Math.max(0, node.metrics.humidity + gaussianNoise(0.1)),
-            acousticLevel: Math.max(0, node.metrics.acousticLevel + gaussianNoise(0.5)),
+            temperature: Math.max(0, meanRevertingNoise(node.metrics.temperature, BASELINES.temperature, 0.08)),
+            humidity: Math.max(0, meanRevertingNoise(node.metrics.humidity, BASELINES.humidity, 0.05)),
+            acousticLevel: Math.max(0, meanRevertingNoise(node.metrics.acousticLevel, BASELINES.acousticLevel, 0.1)),
           };
           return {
             ...node,

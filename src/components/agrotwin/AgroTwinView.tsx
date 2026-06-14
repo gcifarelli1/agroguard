@@ -5,7 +5,7 @@ import { Silo, SensorNode } from '@/types';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/utils/helpers';
 import { THRESHOLDS } from '@/data/thresholds';
-import { Layers, MousePointer, Pause, Play } from 'lucide-react';
+import { MousePointer, Pause, Play } from 'lucide-react';
 import * as THREE from 'three';
 
 interface AgroTwinViewProps {
@@ -49,16 +49,15 @@ function isLayerActive(layerIndex: number, fillRatio: number): boolean {
   if (layerIndex === 1) return fillRatio > 0.33;
   return fillRatio > 0.66;
 }
+ 
 function SiloMesh({
   silo,
   onNodeClick,
   selectedNodeId,
-  showSlice,
 }: {
   silo: Silo;
   onNodeClick: (node: SensorNode) => void;
   selectedNodeId: string | null;
-  showSlice: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const fillRatio = silo.currentLevel / silo.capacity;
@@ -107,18 +106,6 @@ function SiloMesh({
           </mesh>
         );
       })}
-
-      {showSlice && (
-        <mesh position={[0, 0, 0]} rotation={[0, 0, 0]}>
-          <planeGeometry args={[SILO_RADIUS * 2.5, SILO_HEIGHT]} />
-          <meshStandardMaterial
-            color="#3a3a5e"
-            transparent
-            opacity={0.25}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      )}
 
       {fillRatio > 0 && (
         <mesh position={[0, -SILO_HEIGHT / 2 + (SILO_HEIGHT * fillRatio) / 2, 0]}>
@@ -196,14 +183,12 @@ function Scene({
   onNodeClick,
   selectedNode,
   selectedNodeId,
-  showSlice,
   isRotating,
 }: {
   silo: Silo;
   onNodeClick: (node: SensorNode) => void;
   selectedNode: SensorNode | null;
   selectedNodeId: string | null;
-  showSlice: boolean;
   isRotating: boolean;
 }) {
   return (
@@ -220,7 +205,6 @@ function Scene({
         silo={silo}
         onNodeClick={onNodeClick}
         selectedNodeId={selectedNodeId}
-        showSlice={showSlice}
       />
 
       {selectedNode && <NodeTooltip node={selectedNode} />}
@@ -231,7 +215,6 @@ function Scene({
 export default function AgroTwinView({ silo }: AgroTwinViewProps) {
   const { selectedNode, setSelectedNode } = useStore();
   const [isRotating, setIsRotating] = useState(true);
-  const [showSlice, setShowSlice] = useState(false);
 
   const handleNodeClick = useCallback((node: SensorNode) => {
     if (selectedNode?.id === node.id) {
@@ -300,18 +283,6 @@ export default function AgroTwinView({ silo }: AgroTwinViewProps) {
         >
           {isRotating ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         </button>
-        <button
-          onClick={() => setShowSlice(!showSlice)}
-          className={cn(
-            'p-2 rounded-lg border transition-all duration-300 hover:scale-105 active:scale-95',
-            showSlice
-              ? 'bg-blue-500/20 border-blue-500/50 text-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.2)]'
-              : 'bg-card/80 backdrop-blur border-border text-muted-foreground hover:text-foreground hover:border-blue-500/30'
-          )}
-          title={showSlice ? 'Ocultar corte' : 'Ver corte transversal'}
-        >
-          <Layers className="w-4 h-4" />
-        </button>
       </div>
 
       <div className="absolute bottom-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-card/60 backdrop-blur border border-border/50">
@@ -328,7 +299,6 @@ export default function AgroTwinView({ silo }: AgroTwinViewProps) {
           onNodeClick={handleNodeClick}
           selectedNode={selectedNode}
           selectedNodeId={selectedNode?.id || null}
-          showSlice={showSlice}
           isRotating={isRotating}
         />
       </Canvas>

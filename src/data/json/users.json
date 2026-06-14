@@ -1,0 +1,20 @@
+[
+  {
+    "id": "u-01",
+    "name": "Gerente Tandil",
+    "role": "PLANT_MANAGER",
+    "plantId": "PLANT_TANDIL"
+  },
+  {
+    "id": "u-02",
+    "name": "Gerente Benito Juárez",
+    "role": "PLANT_MANAGER",
+    "plantId": "PLANT_JUAREZ"
+  },
+  {
+    "id": "u-03",
+    "name": "Administrador Global",
+    "role": "GLOBAL_ADMIN",
+    "plantId": "ALL"
+  }
+]
