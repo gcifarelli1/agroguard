@@ -43,6 +43,7 @@ Thumbs.db
 # Agents (local)
 .agents/
 .claude/
+.atl/
 
 # Aditional files
 PRD.md

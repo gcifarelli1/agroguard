@@ -73,3 +73,10 @@ export interface Cereal {
   humOptimal: number;
   humWarning: number;
 }
+
+export interface StoredNode {
+  id: string;
+  position: { x: number; y: number; z: number };
+}
+
+export type StoredSilo = Omit<Silo, 'nodes'> & { nodes?: StoredNode[] };

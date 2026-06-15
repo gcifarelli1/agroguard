@@ -2,33 +2,33 @@
   {
     "id": "trigo",
     "name": "Trigo",
-    "tempOptimal": 17.0,
-    "tempWarning": 24.0,
-    "humOptimal": 13.0,
-    "humWarning": 15.0
+    "tempOptimal": 17,
+    "tempWarning": 24,
+    "humOptimal": 13,
+    "humWarning": 15
   },
   {
     "id": "maiz",
     "name": "Maíz",
-    "tempOptimal": 18.0,
-    "tempWarning": 25.0,
-    "humOptimal": 14.0,
-    "humWarning": 16.0
+    "tempOptimal": 18,
+    "tempWarning": 25,
+    "humOptimal": 14,
+    "humWarning": 16
   },
   {
-    "id": "soja",
+    "id": "cereal-1781544388830-5oa",
     "name": "Soja",
-    "tempOptimal": 16.0,
-    "tempWarning": 23.0,
-    "humOptimal": 12.0,
-    "humWarning": 14.0
+    "tempOptimal": 16,
+    "tempWarning": 21,
+    "humOptimal": 13,
+    "humWarning": 14
   },
   {
-    "id": "girasol",
+    "id": "cereal-1781544409400-xy3",
     "name": "Girasol",
-    "tempOptimal": 15.0,
-    "tempWarning": 22.0,
-    "humOptimal": 10.0,
-    "humWarning": 12.0
+    "tempOptimal": 17,
+    "tempWarning": 24,
+    "humOptimal": 13,
+    "humWarning": 15
   }
 ]

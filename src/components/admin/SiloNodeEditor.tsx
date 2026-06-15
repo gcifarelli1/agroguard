@@ -2,18 +2,12 @@ import { useState } from 'react';
 import { useStore } from '@/store/useStore';
 import { Silo, SensorNode } from '@/types';
 import { cn } from '@/utils/helpers';
+import { getLayerForY, MAX_NODES_PER_LAYER } from '@/utils/nodeGeometry';
 import { Layers, Plus, Trash2, X } from 'lucide-react';
 
 interface SiloNodeEditorProps {
   silo: Silo;
   onClose: () => void;
-}
-
-function getLayerIndex(y: number, siloH: number = 5.2): number {
-  const normalized = (y + siloH / 2) / siloH;
-  if (normalized < 0.33) return 0;
-  if (normalized < 0.66) return 1;
-  return 2;
 }
 
 function getLayerLabel(layerIndex: number, totalLayers: number): string {
@@ -29,15 +23,17 @@ export default function SiloNodeEditor({ silo, onClose }: SiloNodeEditorProps) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const totalLayers = silo.layerCount || 3;
-  const siloH = 5.2;
 
   const nodesByLayer: Record<number, SensorNode[]> = {};
   for (let i = 0; i < totalLayers; i++) nodesByLayer[i] = [];
   silo.nodes.forEach((node) => {
-    const layer = getLayerIndex(node.position.y, siloH);
+    const layer = getLayerForY(node.position.y, totalLayers);
     if (!nodesByLayer[layer]) nodesByLayer[layer] = [];
     nodesByLayer[layer].push(node);
   });
+
+  const nodesInSelectedLayer = nodesByLayer[selectedLayer]?.length ?? 0;
+  const layerAtCap = nodesInSelectedLayer >= MAX_NODES_PER_LAYER;
 
   const handleAddNode = () => {
     if (selectedLayer < 0 || selectedLayer >= totalLayers) return;
@@ -94,7 +90,8 @@ export default function SiloNodeEditor({ silo, onClose }: SiloNodeEditorProps) {
             <div className="ml-auto">
               <button
                 onClick={handleAddNode}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-[10px] font-medium transition-all hover:scale-[1.02] active:scale-95"
+                disabled={layerAtCap}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-[10px] font-medium transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Plus className="w-3 h-3" />
                 Agregar Nodo

@@ -1,7 +1,18 @@
 import { create } from 'zustand';
-import { User, Silo, AlertEvent, InjectionParams, SensorNode, Plant, Cereal } from '@/types';
+import { User, Silo, AlertEvent, InjectionParams, SensorNode, Plant, Cereal, StoredSilo } from '@/types';
 import { mockSilos, mockPlants, mockUsers, mockCereals } from '@/data/mockData';
 import { getNodeStatus, THRESHOLDS } from '@/data/thresholds';
+import {
+  createWallNodesForSilo,
+  toStoredNode,
+  hydrateStoredNode,
+  getLayerForY,
+  freshBaselineMetrics,
+  MAX_NODES_PER_LAYER,
+  SILO_R,
+  SILO_H,
+  MARGIN,
+} from '@/utils/nodeGeometry';
 
 interface AppState {
   currentUser: User | null;
@@ -43,6 +54,7 @@ interface AppState {
   deleteSilo: (siloId: string) => void;
   addNodeToSilo: (siloId: string, layer: number) => void;
   removeNodeFromSilo: (siloId: string, nodeId: string) => void;
+  regenerateSiloNodes: (siloId: string, layerCount: number) => void;
 
   // CRUD Cereales
   addCereal: (cereal: Cereal) => void;
@@ -56,53 +68,11 @@ function generateAlertId(): string {
   return `alert-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 }
 
-function createWallNodesForSilo(siloId: string, layerCount: number = 3): SensorNode[] {
-  const nodes: SensorNode[] = [];
-  const siloR = 1.6;
-  const siloH = 5.2;
-  const margin = 0.15;
-  const radius = siloR - margin;
-
-  const angleCount = 4;
-  const layerHeights: number[] = [];
-  for (let i = 0; i < layerCount; i++) {
-    layerHeights.push(-siloH / 2 + (siloH / (layerCount + 1)) * (i + 1));
-  }
-
-  let globalIndex = 0;
-  for (let layer = 0; layer < layerCount; layer++) {
-    for (let angleIdx = 0; angleIdx < angleCount; angleIdx++) {
-      const angle = (angleIdx / angleCount) * Math.PI * 2 + (layer * Math.PI) / 4;
-      const x = radius * Math.cos(angle);
-      const z = radius * Math.sin(angle);
-      const y = layerHeights[layer];
-
-      nodes.push({
-        id: `${siloId}-node-${globalIndex + 1}`,
-        position: { x, y, z },
-        metrics: {
-          temperature: 15 + Math.random() * 2,
-          humidity: 11 + Math.random() * 1.5,
-          acousticLevel: 8 + Math.random() * 2,
-        },
-        status: 'normal',
-      });
-      globalIndex++;
-    }
-  }
-
-  return nodes;
-}
-
-function silosWithNodes(silosData: Array<Omit<Silo, 'nodes'>>): Silo[] {
-  return silosData.map((s) => ({
+function getDefaultSilos(): Silo[] {
+  return mockSilos.map((s) => ({
     ...s,
     nodes: createWallNodesForSilo(s.id, s.layerCount || 3),
   }));
-}
-
-function getDefaultSilos(): Silo[] {
-  return silosWithNodes(mockSilos.map(({ nodes: _nodes, ...rest }) => rest));
 }
 
 function getDefaultPlants(): Plant[] {
@@ -111,6 +81,26 @@ function getDefaultPlants(): Plant[] {
 
 function getDefaultUsers(): User[] {
   return mockUsers;
+}
+
+// Fire-and-forget: persists CRUD data to the seed JSON files via the Vite dev-server middleware.
+// Fails silently in production builds where the endpoint does not exist.
+function syncToFile(entity: string, data: unknown[]): void {
+  fetch(`/api/sync/${entity}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).catch(() => {});
+}
+
+/** Serialises runtime silos (with full SensorNode[]) to StoredSilo[] and persists them. */
+function persistSilosFromRuntime(runtimeSilos: Silo[]): void {
+  const stored: StoredSilo[] = runtimeSilos.map((s) => ({
+    ...s,
+    nodes: s.nodes.map(toStoredNode),
+  }));
+  localStorage.setItem('agroguard_silos', JSON.stringify(stored));
+  syncToFile('silos', stored);
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -152,15 +142,29 @@ export const useStore = create<AppState>((set, get) => ({
     const intensityMultiplier =
       params.intensity === 'LOW' ? 1.5 : params.intensity === 'MEDIUM' ? 2.5 : 4;
 
-    if (params.type === 'HEAT') {
-      node.metrics.temperature = THRESHOLDS.temperature.warning + 5 * intensityMultiplier;
-    } else if (params.type === 'HUMIDITY') {
-      node.metrics.humidity = THRESHOLDS.humidity.warning + 2 * intensityMultiplier;
-    } else {
-      node.metrics.acousticLevel = THRESHOLDS.acousticLevel.warning + 5 * intensityMultiplier;
-    }
+    const newMetrics = {
+      temperature: params.type === 'HEAT'
+        ? THRESHOLDS.temperature.warning + 5 * intensityMultiplier
+        : node.metrics.temperature,
+      humidity: params.type === 'HUMIDITY'
+        ? THRESHOLDS.humidity.warning + 2 * intensityMultiplier
+        : node.metrics.humidity,
+      acousticLevel: params.type === 'BIO_ACOUSTIC'
+        ? THRESHOLDS.acousticLevel.warning + 5 * intensityMultiplier
+        : node.metrics.acousticLevel,
+    };
 
-    node.status = getNodeStatus(node.metrics.temperature, node.metrics.humidity, node.metrics.acousticLevel);
+    const updatedNode = {
+      ...node,
+      metrics: newMetrics,
+      status: getNodeStatus(newMetrics.temperature, newMetrics.humidity, newMetrics.acousticLevel),
+    };
+
+    const updatedSilos = silos.map((s) =>
+      s.id !== params.siloId
+        ? s
+        : { ...s, nodes: s.nodes.map((n, i) => (i === nodeIndex ? updatedNode : n)) }
+    );
 
     const newAlert: AlertEvent = {
       id: generateAlertId(),
@@ -169,13 +173,13 @@ export const useStore = create<AppState>((set, get) => ({
       severity: 'critical',
       location: params,
       siloId: params.siloId,
-      nodeId: node.id,
-      message: `${params.type === 'HEAT' ? 'Calor excesivo' : params.type === 'HUMIDITY' ? 'Humedad crítica' : 'Actividad biológica anormal'} detectada en nodo ${node.id}.`,
+      nodeId: updatedNode.id,
+      message: `${params.type === 'HEAT' ? 'Calor excesivo' : params.type === 'HUMIDITY' ? 'Humedad crítica' : 'Actividad biológica anormal'} detectada en nodo ${updatedNode.id}.`,
       actionRequired: params.type === 'BIO_ACOUSTIC' ? 'Aplicar Tratamiento' : 'Activar Ventilación',
       status: 'active',
     };
 
-    set({ silos: [...silos] });
+    set({ silos: updatedSilos });
     get().persistAlert(newAlert);
   },
 
@@ -184,9 +188,11 @@ export const useStore = create<AppState>((set, get) => ({
     const alert = alerts.find((a) => a.id === alertId);
     if (!alert) return;
 
-    alert.status = 'resolving';
     const silo = silos.find((s) => s.id === alert.siloId);
     const node = silo?.nodes.find((n) => n.id === alert.nodeId);
+
+    set({ alerts: alerts.map((a) => a.id === alertId ? { ...a, status: 'resolving' as const } : a) });
+
     if (node) {
       const anomalyValue = alert.type === 'HEAT'
         ? node.metrics.temperature
@@ -195,7 +201,8 @@ export const useStore = create<AppState>((set, get) => ({
           : node.metrics.acousticLevel;
 
       const mitigateInterval = setInterval(() => {
-        const currentSilo = get().silos.find((s) => s.id === alert.siloId);
+        const currentSilos = get().silos;
+        const currentSilo = currentSilos.find((s) => s.id === alert.siloId);
         const currentNode = currentSilo?.nodes.find((n) => n.id === alert.nodeId);
         if (!currentNode) {
           clearInterval(mitigateInterval);
@@ -203,49 +210,66 @@ export const useStore = create<AppState>((set, get) => ({
         }
 
         let resolved = false;
+        let newMetrics = { ...currentNode.metrics };
+
         if (alert.type === 'HEAT' || alert.type === 'HUMIDITY') {
-          currentNode.metrics.temperature = Math.max(THRESHOLDS.temperature.optimal, currentNode.metrics.temperature - 1.5);
-          currentNode.metrics.humidity = Math.max(THRESHOLDS.humidity.optimal, currentNode.metrics.humidity - 0.8);
-          if (currentNode.metrics.temperature <= THRESHOLDS.temperature.optimal && currentNode.metrics.humidity <= THRESHOLDS.humidity.optimal) {
+          newMetrics = {
+            ...newMetrics,
+            temperature: Math.max(THRESHOLDS.temperature.optimal, newMetrics.temperature - 1.5),
+            humidity: Math.max(THRESHOLDS.humidity.optimal, newMetrics.humidity - 0.8),
+          };
+          if (newMetrics.temperature <= THRESHOLDS.temperature.optimal && newMetrics.humidity <= THRESHOLDS.humidity.optimal) {
             resolved = true;
           }
         } else {
-          currentNode.metrics.acousticLevel = Math.max(THRESHOLDS.acousticLevel.optimal, currentNode.metrics.acousticLevel - 2);
-          if (currentNode.metrics.acousticLevel <= THRESHOLDS.acousticLevel.optimal) {
+          newMetrics = {
+            ...newMetrics,
+            acousticLevel: Math.max(THRESHOLDS.acousticLevel.optimal, newMetrics.acousticLevel - 2),
+          };
+          if (newMetrics.acousticLevel <= THRESHOLDS.acousticLevel.optimal) {
             resolved = true;
           }
         }
 
-        currentNode.status = getNodeStatus(currentNode.metrics.temperature, currentNode.metrics.humidity, currentNode.metrics.acousticLevel);
+        const newStatus = resolved
+          ? 'normal' as const
+          : getNodeStatus(newMetrics.temperature, newMetrics.humidity, newMetrics.acousticLevel);
+
+        const updatedNode = { ...currentNode, metrics: newMetrics, status: newStatus };
+        const newSilos = currentSilos.map((s) =>
+          s.id !== alert.siloId
+            ? s
+            : { ...s, nodes: s.nodes.map((n) => (n.id === alert.nodeId ? updatedNode : n)) }
+        );
 
         if (resolved) {
-          currentNode.status = 'normal';
           const currentAlerts = get().alerts;
           const alertIndex = currentAlerts.findIndex((a) => a.id === alertId);
           if (alertIndex !== -1) {
-            const resolvedAlert = currentAlerts[alertIndex];
-            resolvedAlert.status = 'resolved';
-            resolvedAlert.resolvedBy = get().currentUser?.name || 'Sistema';
-            resolvedAlert.resolvedAt = new Date().toISOString();
+            const resolvedAt = new Date().toISOString();
+            const resolvedBy = get().currentUser?.name || 'Sistema';
+            const originalAlert = currentAlerts[alertIndex];
+            const newAlerts = currentAlerts.map((a) =>
+              a.id !== alertId ? a : { ...a, status: 'resolved' as const, resolvedBy, resolvedAt }
+            );
 
             const reportData = {
-              alertId: resolvedAlert.id,
-              nodeId: resolvedAlert.nodeId,
-              timestamp: resolvedAlert.timestamp,
-              resolvedAt: resolvedAlert.resolvedAt,
-              resolvedBy: resolvedAlert.resolvedBy,
-              anomalyType: resolvedAlert.type,
+              alertId: originalAlert.id,
+              nodeId: originalAlert.nodeId,
+              timestamp: originalAlert.timestamp,
+              resolvedAt,
+              resolvedBy,
+              anomalyType: originalAlert.type,
               anomalyValue: parseFloat(anomalyValue.toFixed(1)),
               plantId: currentSilo?.plantId,
               plantName: getPlantName(mockPlants, currentSilo?.plantId || ''),
-              siloId: resolvedAlert.siloId,
+              siloId: originalAlert.siloId,
               siloName: currentSilo?.name,
             };
 
             const localReportsStr = localStorage.getItem('agroguard_reports');
             const localReports = localReportsStr ? JSON.parse(localReportsStr) : [];
-            const updatedReports = [reportData, ...localReports];
-            localStorage.setItem('agroguard_reports', JSON.stringify(updatedReports));
+            localStorage.setItem('agroguard_reports', JSON.stringify([reportData, ...localReports]));
 
             fetch('/api/reports', {
               method: 'POST',
@@ -258,17 +282,16 @@ export const useStore = create<AppState>((set, get) => ({
                 }
               })
               .catch(() => {});
-          }
-          clearInterval(mitigateInterval);
-          set({ alerts: [...currentAlerts] });
-          localStorage.setItem('agroguard_alerts', JSON.stringify(currentAlerts));
-        }
 
-        set({ silos: [...get().silos] });
+            clearInterval(mitigateInterval);
+            set({ silos: newSilos, alerts: newAlerts });
+            localStorage.setItem('agroguard_alerts', JSON.stringify(newAlerts));
+          }
+        } else {
+          set({ silos: newSilos });
+        }
       }, 500);
     }
-
-    set({ alerts: [...alerts] });
   },
 
   resetMVP: () => {
@@ -317,12 +340,21 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     if (silosStr) {
-      const silosData = JSON.parse(silosStr) as Array<Omit<Silo, 'nodes'>>;
-      set({ silos: silosWithNodes(silosData) });
+      try {
+        const storedSilos = JSON.parse(silosStr) as StoredSilo[];
+        const hydratedSilos: Silo[] = storedSilos.map((s) => ({
+          ...s,
+          nodes: Array.isArray(s.nodes)
+            ? s.nodes.map((n) => hydrateStoredNode(s.id, n))
+            : createWallNodesForSilo(s.id, s.layerCount),
+        }));
+        set({ silos: hydratedSilos });
+      } catch {
+        set({ silos: getDefaultSilos() });
+      }
     } else {
       const defaultSilos = getDefaultSilos();
-      const silosForStorage = defaultSilos.map(({ nodes: _nodes, ...rest }) => rest);
-      localStorage.setItem('agroguard_silos', JSON.stringify(silosForStorage));
+      persistSilosFromRuntime(defaultSilos);
     }
 
     if (plantsStr) {
@@ -352,6 +384,7 @@ export const useStore = create<AppState>((set, get) => ({
     const users = usersStr ? JSON.parse(usersStr) : getDefaultUsers();
     const updated = [...users, user];
     localStorage.setItem('agroguard_users', JSON.stringify(updated));
+    syncToFile('users', updated);
   },
 
   updateUser: (userId, updates) => {
@@ -359,6 +392,7 @@ export const useStore = create<AppState>((set, get) => ({
     const users = usersStr ? JSON.parse(usersStr) : getDefaultUsers();
     const updated = users.map((u: User) => u.id === userId ? { ...u, ...updates } : u);
     localStorage.setItem('agroguard_users', JSON.stringify(updated));
+    syncToFile('users', updated);
   },
 
   deleteUser: (userId) => {
@@ -366,6 +400,7 @@ export const useStore = create<AppState>((set, get) => ({
     const users = usersStr ? JSON.parse(usersStr) : getDefaultUsers();
     const updated = users.filter((u: User) => u.id !== userId);
     localStorage.setItem('agroguard_users', JSON.stringify(updated));
+    syncToFile('users', updated);
   },
 
   // CRUD Plants
@@ -374,6 +409,7 @@ export const useStore = create<AppState>((set, get) => ({
     const plants = plantsStr ? JSON.parse(plantsStr) : getDefaultPlants();
     const updated = [...plants, { ...plant }];
     localStorage.setItem('agroguard_plants', JSON.stringify(updated));
+    syncToFile('plants', updated);
   },
 
   updatePlant: (plantId, updates) => {
@@ -381,6 +417,7 @@ export const useStore = create<AppState>((set, get) => ({
     const plants = plantsStr ? JSON.parse(plantsStr) : getDefaultPlants();
     const updated = plants.map((p: Plant) => p.id === plantId ? { ...p, ...updates } : p);
     localStorage.setItem('agroguard_plants', JSON.stringify(updated));
+    syncToFile('plants', updated);
   },
 
   deletePlant: (plantId) => {
@@ -389,26 +426,24 @@ export const useStore = create<AppState>((set, get) => ({
     const updated = plants.filter((p: Plant) => p.id !== plantId);
     localStorage.setItem('agroguard_plants', JSON.stringify(updated));
 
-    const silosStr = localStorage.getItem('agroguard_silos');
-    const silosData = silosStr ? JSON.parse(silosStr) : getDefaultSilos().map(({ nodes: _nodes, ...rest }) => rest);
-    const filteredSilos = silosData.filter((s: Silo) => s.plantId !== plantId);
-    localStorage.setItem('agroguard_silos', JSON.stringify(filteredSilos));
-    set({ silos: silosWithNodes(filteredSilos) });
+    const currentSilos = get().silos;
+    const filteredSilos = currentSilos.filter((s) => s.plantId !== plantId);
+    set({ silos: filteredSilos });
+    persistSilosFromRuntime(filteredSilos);
+    syncToFile('plants', updated);
   },
 
   // CRUD Silos
   addSilo: (silo) => {
-    const silosStr = localStorage.getItem('agroguard_silos');
-    const silosData = silosStr ? JSON.parse(silosStr) : getDefaultSilos().map(({ nodes: _nodes, ...rest }) => rest);
     const layerCount = silo.layerCount || 3;
-    const newSilo = {
+    const newSilo: Silo = {
       ...silo,
       layerCount,
       nodes: createWallNodesForSilo(silo.id, layerCount),
     };
-    const updated = [...silosData, { ...silo }];
-    localStorage.setItem('agroguard_silos', JSON.stringify(updated));
-    set({ silos: [...get().silos, newSilo] });
+    const updatedSilos = [...get().silos, newSilo];
+    set({ silos: updatedSilos });
+    persistSilosFromRuntime(updatedSilos);
 
     const plantsStr = localStorage.getItem('agroguard_plants');
     const plants = plantsStr ? JSON.parse(plantsStr) : getDefaultPlants();
@@ -416,30 +451,24 @@ export const useStore = create<AppState>((set, get) => ({
       p.id === silo.plantId ? { ...p, silos: [...p.silos, silo.id] } : p
     );
     localStorage.setItem('agroguard_plants', JSON.stringify(updatedPlants));
+    syncToFile('plants', updatedPlants);
   },
 
   updateSilo: (siloId, updates) => {
-    const silosStr = localStorage.getItem('agroguard_silos');
-    const silosData = silosStr ? JSON.parse(silosStr) : getDefaultSilos().map(({ nodes: _nodes, ...rest }) => rest);
-    const updated = silosData.map((s: Silo) => s.id === siloId ? { ...s, ...updates } : s);
-    localStorage.setItem('agroguard_silos', JSON.stringify(updated));
-
     const currentSilos = get().silos;
-    const updatedWithNodes = currentSilos.map((s) =>
+    const updatedSilos = currentSilos.map((s) =>
       s.id === siloId ? { ...s, ...updates } : s
     );
-    set({ silos: updatedWithNodes });
+    set({ silos: updatedSilos });
+    persistSilosFromRuntime(updatedSilos);
   },
 
   deleteSilo: (siloId) => {
-    const silosStr = localStorage.getItem('agroguard_silos');
-    const silosData = silosStr ? JSON.parse(silosStr) : getDefaultSilos().map(({ nodes: _nodes, ...rest }) => rest);
-    const deletedSilo = silosData.find((s: Silo) => s.id === siloId);
-    const updated = silosData.filter((s: Silo) => s.id !== siloId);
-    localStorage.setItem('agroguard_silos', JSON.stringify(updated));
-
     const currentSilos = get().silos;
-    set({ silos: currentSilos.filter((s) => s.id !== siloId) });
+    const deletedSilo = currentSilos.find((s) => s.id === siloId);
+    const updatedSilos = currentSilos.filter((s) => s.id !== siloId);
+    set({ silos: updatedSilos });
+    persistSilosFromRuntime(updatedSilos);
 
     if (deletedSilo) {
       const plantsStr = localStorage.getItem('agroguard_plants');
@@ -450,6 +479,7 @@ export const useStore = create<AppState>((set, get) => ({
           : p
       );
       localStorage.setItem('agroguard_plants', JSON.stringify(updatedPlants));
+      syncToFile('plants', updatedPlants);
     }
   },
 
@@ -458,32 +488,36 @@ export const useStore = create<AppState>((set, get) => ({
     const silo = silos.find((s) => s.id === siloId);
     if (!silo) return;
 
-    const siloH = 5.2;
     const layerCount = silo.layerCount || 3;
-    const nodesInLayer = silo.nodes.filter((n) => {
-      const normalizedY = (n.position.y + siloH / 2) / siloH;
-      const nodeLayer = normalizedY < 1 / layerCount ? 0
-        : normalizedY < 2 / layerCount ? 1
-        : layer - 1;
-      return nodeLayer === layer;
-    });
 
-    const newNodeIndex = nodesInLayer.length + 1;
-    const siloR = 1.6;
-    const margin = 0.15;
-    const radius = siloR - margin;
-    const layerHeight = siloH / (layerCount + 1);
-    const y = -siloH / 2 + layerHeight * (layer + 1);
-    const angle = (newNodeIndex / (nodesInLayer.length + 1)) * Math.PI * 2;
+    // Determine which layer to target based on the passed layer index.
+    // We use getLayerForY to verify existing nodes, but the caller already
+    // supplies the target layer directly.
+    const targetLayer = Math.max(0, Math.min(layerCount - 1, layer));
+    const nodesInLayer = silo.nodes.filter(
+      (n) => getLayerForY(n.position.y, layerCount) === targetLayer
+    );
+
+    if (nodesInLayer.length >= MAX_NODES_PER_LAYER) return;
+
+    // Collision-safe ID: parse numeric suffix from existing ids, take max+1.
+    const existingNums = silo.nodes
+      .map((n) => {
+        const match = n.id.match(/-(\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      });
+    const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
+
+    const radius = SILO_R - MARGIN;
+    const layerHeight = SILO_H / (layerCount + 1);
+    const y = -SILO_H / 2 + layerHeight * (targetLayer + 1);
+    // Place the new node evenly in the 4-slot angular grid.
+    const angle = (nodesInLayer.length / MAX_NODES_PER_LAYER) * Math.PI * 2;
 
     const newNode: SensorNode = {
-      id: `${siloId}-node-${silo.nodes.length + 1}`,
+      id: `${siloId}-node-${nextNum}`,
       position: { x: radius * Math.cos(angle), y, z: radius * Math.sin(angle) },
-      metrics: {
-        temperature: 15 + Math.random() * 2,
-        humidity: 11 + Math.random() * 1.5,
-        acousticLevel: 8 + Math.random() * 2,
-      },
+      metrics: freshBaselineMetrics(),
       status: 'normal',
     };
 
@@ -491,13 +525,7 @@ export const useStore = create<AppState>((set, get) => ({
       s.id === siloId ? { ...s, nodes: [...s.nodes, newNode] } : s
     );
     set({ silos: updatedSilos });
-
-    const silosStr = localStorage.getItem('agroguard_silos');
-    const silosData = silosStr ? JSON.parse(silosStr) : getDefaultSilos().map(({ nodes: _nodes, ...rest }) => rest);
-    const updatedData = silosData.map((s: Silo) =>
-      s.id === siloId ? { ...s, nodes: [...s.nodes, newNode] } : s
-    );
-    localStorage.setItem('agroguard_silos', JSON.stringify(updatedData));
+    persistSilosFromRuntime(updatedSilos);
   },
 
   removeNodeFromSilo: (siloId, nodeId) => {
@@ -506,13 +534,18 @@ export const useStore = create<AppState>((set, get) => ({
       s.id === siloId ? { ...s, nodes: s.nodes.filter((n) => n.id !== nodeId) } : s
     );
     set({ silos: updatedSilos });
+    persistSilosFromRuntime(updatedSilos);
+  },
 
-    const silosStr = localStorage.getItem('agroguard_silos');
-    const silosData = silosStr ? JSON.parse(silosStr) : getDefaultSilos().map(({ nodes: _nodes, ...rest }) => rest);
-    const updatedData = silosData.map((s: Silo) =>
-      s.id === siloId ? { ...s, nodes: s.nodes.filter((n: SensorNode) => n.id !== nodeId) } : s
+  regenerateSiloNodes: (siloId, layerCount) => {
+    const { silos } = get();
+    const updatedSilos = silos.map((s) =>
+      s.id === siloId
+        ? { ...s, layerCount, nodes: createWallNodesForSilo(siloId, layerCount) }
+        : s
     );
-    localStorage.setItem('agroguard_silos', JSON.stringify(updatedData));
+    set({ silos: updatedSilos });
+    persistSilosFromRuntime(updatedSilos);
   },
 
   // CRUD Cereales
@@ -521,6 +554,7 @@ export const useStore = create<AppState>((set, get) => ({
     const updated = [...cereals, cereal];
     set({ cereals: updated });
     localStorage.setItem('agroguard_cereals', JSON.stringify(updated));
+    syncToFile('cereales', updated);
   },
 
   updateCereal: (cerealId, updates) => {
@@ -528,6 +562,7 @@ export const useStore = create<AppState>((set, get) => ({
     const updated = cereals.map((c) => c.id === cerealId ? { ...c, ...updates } : c);
     set({ cereals: updated });
     localStorage.setItem('agroguard_cereals', JSON.stringify(updated));
+    syncToFile('cereales', updated);
   },
 
   deleteCereal: (cerealId) => {
@@ -535,6 +570,7 @@ export const useStore = create<AppState>((set, get) => ({
     const updated = cereals.filter((c) => c.id !== cerealId);
     set({ cereals: updated });
     localStorage.setItem('agroguard_cereals', JSON.stringify(updated));
+    syncToFile('cereales', updated);
   },
 }));
 

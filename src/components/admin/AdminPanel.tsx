@@ -266,13 +266,25 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
   const handleEditSilo = () => {
     if (!editingItem || !formAdd.name?.trim()) return;
+    const newLayerCount = Number(formAdd.layerCount);
+    const layerCountChanged = newLayerCount !== (editingItem as Silo).layerCount;
+    if (layerCountChanged) {
+      const confirmed = window.confirm(
+        `Cambiar las capas de ${(editingItem as Silo).layerCount} a ${newLayerCount} eliminará los nodos actuales y los regenerará. ¿Continuar?`
+      );
+      if (!confirmed) {
+        setFormAdd((f: any) => ({ ...f, layerCount: String((editingItem as Silo).layerCount) }));
+        return;
+      }
+      store.regenerateSiloNodes((editingItem as Silo).id, newLayerCount);
+    }
     store.updateSilo(editingItem.id, {
       name: formAdd.name,
       plantId: formAdd.plantId,
       capacity: Number(formAdd.capacity),
       currentLevel: Number(formAdd.currentLevel),
       cerealType: formAdd.cerealType,
-      layerCount: Number(formAdd.layerCount),
+      layerCount: newLayerCount,
     });
     setShowEditModal(false);
     setEditingItem(null);

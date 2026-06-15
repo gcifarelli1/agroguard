@@ -60,30 +60,42 @@ export default function SimulationEngine() {
       useStore.setState({ silos: updatedSilos });
 
       if (Math.random() < ANOMALY_PROBABILITY) {
-        const randomSilo = updatedSilos[Math.floor(Math.random() * updatedSilos.length)];
-        const randomNode = randomSilo.nodes[Math.floor(Math.random() * randomSilo.nodes.length)];
+        const randomSiloIndex = Math.floor(Math.random() * updatedSilos.length);
+        const randomSilo = updatedSilos[randomSiloIndex];
+        if (!randomSilo.nodes.length) return;
+        const randomNodeIndex = Math.floor(Math.random() * randomSilo.nodes.length);
+        const randomNode = randomSilo.nodes[randomNodeIndex];
         const anomalyTypes = ['HEAT', 'HUMIDITY', 'BIO_ACOUSTIC'] as const;
         const anomalyType = anomalyTypes[Math.floor(Math.random() * anomalyTypes.length)];
-
         const intensityMultiplier = 2 + Math.random() * 2;
-        if (anomalyType === 'HEAT') {
-          randomNode.metrics.temperature = 25 + intensityMultiplier;
-        } else if (anomalyType === 'HUMIDITY') {
-          randomNode.metrics.humidity = 15 + intensityMultiplier / 2;
-        } else {
-          randomNode.metrics.acousticLevel = 18 + intensityMultiplier * 1.5;
-        }
-        randomNode.status = getNodeStatus(randomNode.metrics.temperature, randomNode.metrics.humidity, randomNode.metrics.acousticLevel);
+
+        const anomalyMetrics = {
+          temperature: anomalyType === 'HEAT' ? 25 + intensityMultiplier : randomNode.metrics.temperature,
+          humidity: anomalyType === 'HUMIDITY' ? 15 + intensityMultiplier / 2 : randomNode.metrics.humidity,
+          acousticLevel: anomalyType === 'BIO_ACOUSTIC' ? 18 + intensityMultiplier * 1.5 : randomNode.metrics.acousticLevel,
+        };
+        const anomalyNode = {
+          ...randomNode,
+          metrics: anomalyMetrics,
+          status: getNodeStatus(anomalyMetrics.temperature, anomalyMetrics.humidity, anomalyMetrics.acousticLevel),
+        };
+        const anomalyUpdatedSilos = updatedSilos.map((s, si) =>
+          si !== randomSiloIndex
+            ? s
+            : { ...s, nodes: s.nodes.map((n, ni) => (ni === randomNodeIndex ? anomalyNode : n)) }
+        );
+
+        useStore.setState({ silos: anomalyUpdatedSilos });
 
         const newAlert: AlertEvent = {
           id: generateAlertId(),
           timestamp: new Date().toISOString(),
           type: anomalyType,
           severity: 'critical',
-          location: randomNode.position,
+          location: anomalyNode.position,
           siloId: randomSilo.id,
-          nodeId: randomNode.id,
-          message: `Anomalía autónoma: ${anomalyType === 'HEAT' ? 'Calor excesivo' : anomalyType === 'HUMIDITY' ? 'Humedad crítica' : 'Actividad biológica'} detectada en ${randomNode.id}.`,
+          nodeId: anomalyNode.id,
+          message: `Anomalía autónoma: ${anomalyType === 'HEAT' ? 'Calor excesivo' : anomalyType === 'HUMIDITY' ? 'Humedad crítica' : 'Actividad biológica'} detectada en ${anomalyNode.id}.`,
           actionRequired: anomalyType === 'BIO_ACOUSTIC' ? 'Aplicar Tratamiento' : 'Activar Ventilación',
           status: 'active',
         };
