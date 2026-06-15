@@ -107,7 +107,8 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   const store = useStore();
   const isAdmin = store.currentUser?.role === 'GLOBAL_ADMIN';
   const managerPlantId = store.currentUser?.plantId;
-  const [activeTab, setActiveTab] = useState<Tab>(isAdmin ? 'users' : 'silos');
+  const adminActiveTab = useStore((s) => s.adminActiveTab);
+  const setAdminActiveTab = useStore((s) => s.setAdminActiveTab);
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -160,10 +161,10 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
   // Si un gerente quedara en una pestaña restringida, lo devolvemos a Silos.
   useEffect(() => {
-    if (!isAdmin && (activeTab === 'users' || activeTab === 'plants')) {
-      setActiveTab('silos');
+    if (!isAdmin && (adminActiveTab === 'users' || adminActiveTab === 'plants')) {
+      setAdminActiveTab('silos');
     }
-  }, [isAdmin, activeTab]);
+  }, [isAdmin, adminActiveTab]);
 
   // --- USERS CRUD ---
   const handleAddUser = () => {
@@ -242,6 +243,10 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   // --- SILOS CRUD ---
   const handleAddSilo = () => {
     if (!formAdd.name?.trim()) return;
+    if (parseFloat(formAdd.currentLevel) > parseFloat(formAdd.capacity)) {
+      alert('El nivel actual no puede superar la capacidad máxima.');
+      return;
+    }
     const newSilo: Silo = {
       id: `silo-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
       name: formAdd.name,
@@ -266,6 +271,10 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
   const handleEditSilo = () => {
     if (!editingItem || !formAdd.name?.trim()) return;
+    if (parseFloat(formAdd.currentLevel) > parseFloat(formAdd.capacity)) {
+      alert('El nivel actual no puede superar la capacidad máxima.');
+      return;
+    }
     const newLayerCount = Number(formAdd.layerCount);
     const layerCountChanged = newLayerCount !== (editingItem as Silo).layerCount;
     if (layerCountChanged) {
@@ -348,7 +357,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   };
 
   const handleOpenAdd = () => {
-    switch (activeTab) {
+    switch (adminActiveTab) {
       case 'users':
         setFormAdd({ name: '', role: 'PLANT_MANAGER', plantId: store.currentUser?.plantId || 'PLANT_JUAREZ' });
         break;
@@ -367,7 +376,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
   // Generic Add form renderer
   const renderAddForm = () => {
-    switch (activeTab) {
+    switch (adminActiveTab) {
       case 'users':
         return (
           <>
@@ -556,7 +565,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   // Generic Edit form renderer
   const renderEditForm = () => {
     if (!editingItem) return null;
-    switch (activeTab) {
+    switch (adminActiveTab) {
       case 'users':
         return (
           <>
@@ -752,7 +761,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
   // Render tab content
   const renderTabContent = () => {
-    switch (activeTab) {
+    switch (adminActiveTab) {
       case 'users':
         return (
           <div className="overflow-x-auto">
@@ -964,7 +973,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   };
 
   const getTabModalTitle = () => {
-    switch (activeTab) {
+    switch (adminActiveTab) {
       case 'users': return 'Nuevo Usuario';
       case 'plants': return 'Nueva Sede';
       case 'silos': return 'Nuevo Silo';
@@ -974,7 +983,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
   const getEditModalTitle = () => {
     if (!editingItem) return '';
-    switch (activeTab) {
+    switch (adminActiveTab) {
       case 'users': return 'Editar Usuario';
       case 'plants': return 'Editar Sede';
       case 'silos': return 'Editar Silo';
@@ -1016,10 +1025,10 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setAdminActiveTab(tab.id)}
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-md text-xs font-medium transition-all',
-                  activeTab === tab.id
+                  adminActiveTab === tab.id
                     ? 'bg-primary/20 text-primary shadow-[0_0_12px_rgba(34,197,94,0.1)]'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/40'
                 )}
@@ -1033,7 +1042,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
           {/* Content */}
           <div className="bg-card/60 backdrop-blur border border-border rounded-xl overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground capitalize">{tabs.find((t) => t.id === activeTab)?.label}</h3>
+              <h3 className="text-sm font-semibold text-foreground capitalize">{tabs.find((t) => t.id === adminActiveTab)?.label}</h3>
               <button
                 onClick={handleOpenAdd}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-xs font-medium transition-all hover:scale-[1.02] active:scale-95"

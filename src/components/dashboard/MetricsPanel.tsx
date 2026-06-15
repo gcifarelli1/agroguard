@@ -1,25 +1,36 @@
+import { useState, useEffect } from 'react';
 import { Silo } from '@/types';
 import { THRESHOLDS } from '@/data/thresholds';
 import { cn } from '@/utils/helpers';
 import { Thermometer, Droplets, Volume2, AlertTriangle, Package } from 'lucide-react';
+import { useStore } from '@/store/useStore';
 
 interface MetricsPanelProps {
   silo: Silo;
 }
 
 export default function MetricsPanel({ silo }: MetricsPanelProps) {
-  const temps = silo.nodes.map((n) => n.metrics.temperature);
-  const hums = silo.nodes.map((n) => n.metrics.humidity);
-  const dbs = silo.nodes.map((n) => n.metrics.acousticLevel);
-  const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
-  const avgHum = hums.reduce((a, b) => a + b, 0) / hums.length;
-  const avgDb = dbs.reduce((a, b) => a + b, 0) / dbs.length;
+  const { selectedNode, toggleNodeActive } = useStore();
+  const [pendingDeactivate, setPendingDeactivate] = useState(false);
 
-  const criticalCount = silo.nodes.filter((n) => n.status === 'critical').length;
-  const warningCount = silo.nodes.filter((n) => n.status === 'warning').length;
-  const normalCount = silo.nodes.length - criticalCount - warningCount;
+  const activeNodes = silo.nodes.filter((n) => n.active !== false);
+  const temps = activeNodes.map((n) => n.metrics.temperature);
+  const hums = activeNodes.map((n) => n.metrics.humidity);
+  const dbs = activeNodes.map((n) => n.metrics.acousticLevel);
+  const avgTemp = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : 0;
+  const avgHum = hums.length ? hums.reduce((a, b) => a + b, 0) / hums.length : 0;
+  const avgDb = dbs.length ? dbs.reduce((a, b) => a + b, 0) / dbs.length : 0;
+
+  const criticalCount = activeNodes.filter((n) => n.status === 'critical').length;
+  const warningCount = activeNodes.filter((n) => n.status === 'warning').length;
+  const normalCount = activeNodes.length - criticalCount - warningCount;
 
   const fillPercent = Math.round((silo.currentLevel / silo.capacity) * 100);
+
+  // Reset pending confirmation when selected node changes.
+  useEffect(() => {
+    setPendingDeactivate(false);
+  }, [selectedNode]);
 
   const getStatusInfo = (value: number, optimal: number, warning: number) => {
     if (value > warning) return { color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/30', ring: 'ring-destructive/20' };
@@ -111,6 +122,71 @@ export default function MetricsPanel({ silo }: MetricsPanelProps) {
         ))}
       </div>
 
+      {/* Selected node toggle — rendered ABOVE the distribution bars */}
+      {selectedNode && silo.nodes.some((n) => n.id === selectedNode.id) && (() => {
+        const node = silo.nodes.find((n) => n.id === selectedNode.id)!;
+        const isActive = node.active !== false;
+        return (
+          <div className="pt-3 border-t border-border/50 relative">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                  Nodo seleccionado
+                </p>
+                <p className="text-xs font-semibold text-foreground mt-0.5">{node.id}</p>
+              </div>
+              {pendingDeactivate ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">¿Desactivar nodo?</span>
+                  <button
+                    onClick={() => { toggleNodeActive(silo.id, node.id); setPendingDeactivate(false); }}
+                    className="text-destructive font-medium hover:underline"
+                  >
+                    Confirmar
+                  </button>
+                  <button
+                    onClick={() => setPendingDeactivate(false)}
+                    className="text-muted-foreground hover:underline"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isActive}
+                  onClick={() => {
+                    if (isActive) {
+                      setPendingDeactivate(true);
+                    } else {
+                      toggleNodeActive(silo.id, node.id);
+                    }
+                  }}
+                  className={cn(
+                    'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                    isActive ? 'bg-primary' : 'bg-accent',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform duration-200',
+                      isActive ? 'translate-x-4' : 'translate-x-0',
+                    )}
+                  />
+                </button>
+              )}
+            </div>
+            <p className={cn(
+              'text-[10px] font-mono mt-1',
+              isActive ? 'text-primary' : 'text-muted-foreground',
+            )}>
+              {isActive ? 'Activo' : 'Inactivo'}
+            </p>
+          </div>
+        );
+      })()}
+
       <div className="mt-auto pt-3 border-t border-border/50 relative">
         <div className="flex items-center justify-between mb-2.5">
           <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
@@ -137,7 +213,7 @@ export default function MetricsPanel({ silo }: MetricsPanelProps) {
               <div className="h-1.5 bg-accent/50 rounded-full overflow-hidden">
                 <div
                   className={cn('h-full transition-all duration-500 ease-out', item.color)}
-                  style={{ width: `${(item.count / silo.nodes.length) * 100}%` }}
+                  style={{ width: activeNodes.length ? `${(item.count / activeNodes.length) * 100}%` : '0%' }}
                 />
               </div>
             </div>

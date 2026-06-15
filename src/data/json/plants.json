@@ -19,5 +19,15 @@
       "SILO_J2",
       "silo-1781544035656-st3"
     ]
+  },
+  {
+    "id": "plant-1781549499551-hsc",
+    "name": "Sucursal Vela",
+    "location": "Maria Ignacia Vela, Buenos Aires",
+    "silos": [
+      "silo-1781549843469-pfs",
+      "silo-1781556288282-zfo",
+      "silo-1781557413165-qnf"
+    ]
   }
 ]

@@ -7,14 +7,16 @@ import {
   toStoredNode,
   hydrateStoredNode,
   getLayerForY,
+  layerY,
   freshBaselineMetrics,
   MAX_NODES_PER_LAYER,
   SILO_R,
-  SILO_H,
   MARGIN,
 } from '@/utils/nodeGeometry';
 
-interface AppState {
+type AdminTab = 'users' | 'plants' | 'silos' | 'cereals';
+
+export interface AppState {
   currentUser: User | null;
   selectedPlantId: string;
   selectedSiloId: string | null;
@@ -23,10 +25,12 @@ interface AppState {
   isSimulationRunning: boolean;
   selectedNode: SensorNode | null;
   cereals: Cereal[];
+  adminActiveTab: AdminTab;
 
   setCurrentUser: (user: User) => void;
   logout: () => void;
   setSelectedPlantId: (plantId: string) => void;
+  setAdminActiveTab: (tab: AdminTab) => void;
   setSelectedSiloId: (siloId: string | null) => void;
   setSelectedNode: (node: SensorNode | null) => void;
   injectAnomaly: (params: InjectionParams) => void;
@@ -55,6 +59,7 @@ interface AppState {
   addNodeToSilo: (siloId: string, layer: number) => void;
   removeNodeFromSilo: (siloId: string, nodeId: string) => void;
   regenerateSiloNodes: (siloId: string, layerCount: number) => void;
+  toggleNodeActive: (siloId: string, nodeId: string) => void;
 
   // CRUD Cereales
   addCereal: (cereal: Cereal) => void;
@@ -112,6 +117,7 @@ export const useStore = create<AppState>((set, get) => ({
   isSimulationRunning: false,
   selectedNode: null,
   cereals: mockCereals,
+  adminActiveTab: 'users',
 
   setCurrentUser: (user) => {
     const plantId = user.role === 'GLOBAL_ADMIN' ? 'PLANT_JUAREZ' : user.plantId;
@@ -120,13 +126,24 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   logout: () => {
-    set({ currentUser: null, selectedSiloId: null, selectedNode: null });
+    set({ currentUser: null, selectedSiloId: null, selectedNode: null, adminActiveTab: 'users' });
     localStorage.removeItem('agroguard_user');
+    localStorage.removeItem('agroguard_selected_silo');
+    localStorage.removeItem('agroguard_admin_tab');
   },
 
-  setSelectedPlantId: (plantId) => set({ selectedPlantId: plantId, selectedSiloId: null }),
-  setSelectedSiloId: (siloId) => set({ selectedSiloId: siloId, selectedNode: null }),
+  setSelectedPlantId: (plantId) => set((s) =>
+    s.selectedPlantId === plantId ? {} : { selectedPlantId: plantId, selectedSiloId: null }),
+  setSelectedSiloId: (siloId) => {
+    set({ selectedSiloId: siloId, selectedNode: null });
+    if (siloId) localStorage.setItem('agroguard_selected_silo', siloId);
+    else localStorage.removeItem('agroguard_selected_silo');
+  },
   setSelectedNode: (node) => set({ selectedNode: node }),
+  setAdminActiveTab: (tab) => {
+    set({ adminActiveTab: tab });
+    localStorage.setItem('agroguard_admin_tab', tab);
+  },
   startSimulation: () => set({ isSimulationRunning: true }),
   stopSimulation: () => set({ isSimulationRunning: false }),
 
@@ -339,6 +356,12 @@ export const useStore = create<AppState>((set, get) => ({
       set({ alerts });
     }
 
+    const savedSiloId = localStorage.getItem('agroguard_selected_silo');
+    if (savedSiloId) set({ selectedSiloId: savedSiloId });
+
+    const savedTab = localStorage.getItem('agroguard_admin_tab');
+    if (savedTab) set({ adminActiveTab: savedTab as 'users' | 'plants' | 'silos' | 'cereals' });
+
     if (silosStr) {
       try {
         const storedSilos = JSON.parse(silosStr) as StoredSilo[];
@@ -435,11 +458,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   // CRUD Silos
   addSilo: (silo) => {
-    const layerCount = silo.layerCount || 3;
     const newSilo: Silo = {
       ...silo,
-      layerCount,
-      nodes: createWallNodesForSilo(silo.id, layerCount),
+      layerCount: silo.layerCount || 3,
+      nodes: [],
     };
     const updatedSilos = [...get().silos, newSilo];
     set({ silos: updatedSilos });
@@ -509,8 +531,7 @@ export const useStore = create<AppState>((set, get) => ({
     const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
 
     const radius = SILO_R - MARGIN;
-    const layerHeight = SILO_H / (layerCount + 1);
-    const y = -SILO_H / 2 + layerHeight * (targetLayer + 1);
+    const y = layerY(targetLayer, layerCount);
     // Place the new node evenly in the 4-slot angular grid.
     const angle = (nodesInLayer.length / MAX_NODES_PER_LAYER) * Math.PI * 2;
 
@@ -548,6 +569,30 @@ export const useStore = create<AppState>((set, get) => ({
     persistSilosFromRuntime(updatedSilos);
   },
 
+  toggleNodeActive: (siloId, nodeId) => {
+    const { silos } = get();
+    const updatedSilos = silos.map((s) => {
+      if (s.id !== siloId) return s;
+      return {
+        ...s,
+        nodes: s.nodes.map((n) => {
+          if (n.id !== nodeId) return n;
+          return { ...n, active: !(n.active ?? true) };
+        }),
+      };
+    });
+
+    // Determine if we are deactivating the node (new state is false).
+    const updatedNode = updatedSilos.find((s) => s.id === siloId)?.nodes.find((n) => n.id === nodeId);
+    const isDeactivating = !(updatedNode?.active ?? true);
+    const clearSelected = isDeactivating && get().selectedNode?.id === nodeId;
+
+    set({ silos: updatedSilos, ...(clearSelected ? { selectedNode: null } : {}) });
+    // Persist active state to localStorage only — syncToFile would trigger Vite HMR and reload the page.
+    const stored = updatedSilos.map((s) => ({ ...s, nodes: s.nodes.map(toStoredNode) }));
+    localStorage.setItem('agroguard_silos', JSON.stringify(stored));
+  },
+
   // CRUD Cereales
   addCereal: (cereal) => {
     const cereals = get().cereals;
@@ -577,6 +622,13 @@ export const useStore = create<AppState>((set, get) => ({
 export function getSilosForPlant(silos: Silo[], plantId: string): Silo[] {
   if (plantId === 'ALL') return silos;
   return silos.filter((s) => s.plantId === plantId);
+}
+
+export function getVisibleSiloIds(state: AppState): string[] {
+  const { currentUser, silos } = state;
+  if (!currentUser) return [];
+  if (currentUser.role === 'GLOBAL_ADMIN') return silos.map((s) => s.id);
+  return silos.filter((s) => s.plantId === currentUser.plantId).map((s) => s.id);
 }
 
 export function getPlantName(plants: Plant[], plantId: string): string {

@@ -1,10 +1,11 @@
-import { useRef, useState, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Html } from '@react-three/drei';
 import { Silo, SensorNode } from '@/types';
 import { useStore } from '@/store/useStore';
 import { cn } from '@/utils/helpers';
 import { THRESHOLDS } from '@/data/thresholds';
+import { getLayerForY } from '@/utils/nodeGeometry';
 import { MousePointer, Pause, Play } from 'lucide-react';
 import * as THREE from 'three';
 
@@ -16,6 +17,7 @@ const SILO_RADIUS = 1.6;
 const SILO_HEIGHT = 5.2;
 
 function getNodeColor(node: SensorNode, disabled: boolean): string {
+  if (node.active === false) return '#6b7280';
   if (disabled) return '#4a5568';
   if (node.status === 'critical') return '#ef4444';
   if (node.status === 'warning') return '#eab308';
@@ -36,20 +38,18 @@ function CameraControls({ isRotating }: { isRotating: boolean }) {
   );
 }
 
-function getLayerForNode(y: number): number {
-  const minY = -SILO_HEIGHT / 2;
-  const normalized = (y - minY) / SILO_HEIGHT;
-  if (normalized < 0.33) return 0;
-  if (normalized < 0.66) return 1;
-  return 2;
+function isLayerActive(layerIndex: number, fillRatio: number, layerCount: number): boolean {
+  if (fillRatio <= 0) return false;
+  if (layerIndex === 0) return true;
+  return fillRatio >= layerIndex / layerCount;
 }
 
-function isLayerActive(layerIndex: number, fillRatio: number): boolean {
-  if (layerIndex === 0) return true;
-  if (layerIndex === 1) return fillRatio > 0.33;
-  return fillRatio > 0.66;
+class TooltipBoundary extends React.Component<{ children: React.ReactNode }, { error: boolean }> {
+  state = { error: false };
+  static getDerivedStateFromError() { return { error: true }; }
+  render() { return this.state.error ? null : this.props.children; }
 }
- 
+
 function SiloMesh({
   silo,
   onNodeClick,
@@ -61,6 +61,7 @@ function SiloMesh({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const fillRatio = silo.currentLevel / silo.capacity;
+  const layerCount = silo.layerCount ?? 3;
 
   return (
     <group ref={groupRef}>
@@ -86,21 +87,22 @@ function SiloMesh({
       </mesh>
 
       {silo.nodes.map((node) => {
-        const layer = getLayerForNode(node.position.y);
-        const layerActive = isLayerActive(layer, fillRatio);
+        const layer = getLayerForY(node.position.y, layerCount);
+        const layerActive = isLayerActive(layer, fillRatio, layerCount);
+        const nodeDisabled = !layerActive;
         return (
           <mesh
             key={node.id}
             position={[node.position.x, node.position.y, node.position.z]}
             onClick={(e) => {
               e.stopPropagation();
-              if (layerActive) onNodeClick(node);
+              if (layerActive && node.active !== false) onNodeClick(node);
             }}
           >
             <sphereGeometry args={[0.28, 16, 16]} />
             <meshStandardMaterial
-              color={getNodeColor(node, !layerActive)}
-              emissive={selectedNodeId === node.id ? '#ffffff' : getNodeColor(node, !layerActive)}
+              color={getNodeColor(node, nodeDisabled)}
+              emissive={selectedNodeId === node.id ? '#ffffff' : getNodeColor(node, nodeDisabled)}
               emissiveIntensity={selectedNodeId === node.id ? 0.6 : 0.2}
             />
           </mesh>
@@ -121,9 +123,7 @@ function SiloMesh({
   );
 }
 
-function NodeTooltip({ node }: { node: SensorNode | null }) {
-  if (!node) return null;
-
+function NodeTooltip({ node, layerCount }: { node: SensorNode; layerCount: number }) {
   return (
     <Html distanceFactor={12} position={[node.position.x + 1.5, node.position.y, node.position.z]}>
       <div className="bg-card/95 backdrop-blur border border-border rounded-lg p-3 shadow-xl min-w-[160px] pointer-events-none">
@@ -171,7 +171,7 @@ function NodeTooltip({ node }: { node: SensorNode | null }) {
           </div>
         </div>
         <div className="mt-2 pt-2 border-t border-border text-[10px] text-muted-foreground">
-          Capa {getLayerForNode(node.position.y) + 1} | Pos: ({node.position.x.toFixed(1)}, {node.position.y.toFixed(1)}, {node.position.z.toFixed(1)})
+          Capa {getLayerForY(node.position.y, layerCount) + 1} | Pos: ({node.position.x.toFixed(1)}, {node.position.y.toFixed(1)}, {node.position.z.toFixed(1)})
         </div>
       </div>
     </Html>
@@ -191,6 +191,15 @@ function Scene({
   selectedNodeId: string | null;
   isRotating: boolean;
 }) {
+  const layerCount = silo.layerCount ?? 3;
+  const fillRatio = silo.currentLevel / silo.capacity;
+
+  // Resolve tooltip node fresh from silo data to avoid stale selectedNode reference.
+  const tooltipNode = silo.nodes.find((n) => n.id === selectedNode?.id);
+  const tooltipLayer = tooltipNode != null ? getLayerForY(tooltipNode.position.y, layerCount) : -1;
+  const tooltipLayerActive = tooltipLayer >= 0 && isLayerActive(tooltipLayer, fillRatio, layerCount);
+  const showTooltip = tooltipNode != null && tooltipLayerActive && tooltipNode.active !== false;
+
   return (
     <>
       <PerspectiveCamera makeDefault position={[6, 2, 6]} fov={50} />
@@ -207,7 +216,11 @@ function Scene({
         selectedNodeId={selectedNodeId}
       />
 
-      {selectedNode && <NodeTooltip node={selectedNode} />}
+      {showTooltip && (
+        <TooltipBoundary>
+          <NodeTooltip node={tooltipNode} layerCount={layerCount} />
+        </TooltipBoundary>
+      )}
     </>
   );
 }
@@ -226,15 +239,15 @@ export default function AgroTwinView({ silo }: AgroTwinViewProps) {
 
   const fillRatio = silo.currentLevel / silo.capacity;
   const fillPercent = Math.round(fillRatio * 100);
+  const layerCount = silo.layerCount ?? 3;
 
   const layerInfo = useMemo(() => {
-    const layers = [
-      { range: '0-33%', active: true, label: 'Capa 1 (Base)' },
-      { range: '33-66%', active: fillRatio > 0.33, label: 'Capa 2 (Medio)' },
-      { range: '66-100%', active: fillRatio > 0.66, label: 'Capa 3 (Tope)' },
-    ];
-    return layers;
-  }, [fillRatio]);
+    return Array.from({ length: layerCount }, (_, i) => {
+      const active = isLayerActive(i, fillRatio, layerCount);
+      const label = i === 0 ? 'Capa 1 (Base)' : i === layerCount - 1 ? `Capa ${i + 1} (Tope)` : `Capa ${i + 1}`;
+      return { label, active };
+    });
+  }, [fillRatio, layerCount]);
 
   return (
     <div className="relative h-[400px] w-full bg-gradient-to-b from-accent/20 to-background rounded-lg overflow-hidden">
@@ -264,7 +277,7 @@ export default function AgroTwinView({ silo }: AgroTwinViewProps) {
               'font-mono',
               layer.active ? 'text-foreground' : 'text-muted-foreground'
             )}>
-              {layer.label} ({layer.range})
+              {layer.label}
             </span>
           </div>
         ))}

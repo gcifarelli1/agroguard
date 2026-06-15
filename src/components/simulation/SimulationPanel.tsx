@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore, getSilosForPlant } from '@/store/useStore';
 import { AlertType, AnomalyIntensity } from '@/types';
 import { cn } from '@/utils/helpers';
@@ -8,27 +8,47 @@ export default function SimulationPanel() {
   const { silos, selectedPlantId, injectAnomaly, currentUser } = useStore();
   const [isMinimized, setIsMinimized] = useState(false);
   const [formData, setFormData] = useState({
-    siloId: 'SILO_J1',
-    nodeIndex: 0,
+    siloId: '',
+    selectedNodeId: '',
     type: 'HEAT' as AlertType,
     intensity: 'HIGH' as AnomalyIntensity,
   });
 
   const visibleSilos = getSilosForPlant(silos, currentUser?.role === 'GLOBAL_ADMIN' ? selectedPlantId : currentUser?.plantId || '');
 
+  // Keep siloId in sync with the visible silo list — reset when the selected silo is no longer visible.
+  useEffect(() => {
+    if (!visibleSilos.find((s) => s.id === formData.siloId)) {
+      const defaultId = visibleSilos[0]?.id ?? '';
+      setFormData((f) => ({ ...f, siloId: defaultId, selectedNodeId: '' }));
+    }
+  }, [visibleSilos]);
+
+  const selectedSilo = silos.find((s) => s.id === formData.siloId);
+  const activeNodes = selectedSilo?.nodes.filter((n) => n.active !== false) ?? [];
+
+  // Keep selectedNodeId in sync when active nodes change.
+  useEffect(() => {
+    if (formData.selectedNodeId && !activeNodes.find((n) => n.id === formData.selectedNodeId)) {
+      setFormData((f) => ({ ...f, selectedNodeId: activeNodes[0]?.id ?? '' }));
+    } else if (!formData.selectedNodeId && activeNodes.length > 0) {
+      setFormData((f) => ({ ...f, selectedNodeId: activeNodes[0].id }));
+    }
+  }, [activeNodes, formData.selectedNodeId]);
+
   const handleInject = () => {
+    if (!selectedSilo || !formData.selectedNodeId) return;
+    const nodeArrayIndex = selectedSilo.nodes.findIndex((n) => n.id === formData.selectedNodeId);
+    if (nodeArrayIndex === -1) return;
     injectAnomaly({
       siloId: formData.siloId,
-      x: formData.nodeIndex,
+      x: nodeArrayIndex,
       y: 0,
       z: 0,
       type: formData.type,
       intensity: formData.intensity,
     });
   };
-
-  const selectedSilo = silos.find((s) => s.id === formData.siloId);
-  const totalNodes = selectedSilo?.nodes.length || 12;
 
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
@@ -64,7 +84,7 @@ export default function SimulationPanel() {
               <label className="block text-xs text-muted-foreground mb-1.5">Silo</label>
               <select
                 value={formData.siloId}
-                onChange={(e) => setFormData({ ...formData, siloId: e.target.value, nodeIndex: 0 })}
+                onChange={(e) => setFormData({ ...formData, siloId: e.target.value, selectedNodeId: '' })}
                 className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
               >
                 {visibleSilos.map((s) => (
@@ -74,16 +94,20 @@ export default function SimulationPanel() {
             </div>
 
             <div className="col-span-1">
-              <label className="block text-xs text-muted-foreground mb-1.5">Nodo (1-{totalNodes})</label>
+              <label className="block text-xs text-muted-foreground mb-1.5">Nodo</label>
               <select
-                value={formData.nodeIndex}
-                onChange={(e) => setFormData({ ...formData, nodeIndex: parseInt(e.target.value) })}
-                className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                value={formData.selectedNodeId}
+                onChange={(e) => setFormData({ ...formData, selectedNodeId: e.target.value })}
+                disabled={activeNodes.length === 0}
+                className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {Array.from({ length: totalNodes }, (_, i) => (
-                  <option key={i} value={i}>Nodo {i + 1}</option>
+                {activeNodes.map((n) => (
+                  <option key={n.id} value={n.id}>{n.id}</option>
                 ))}
               </select>
+              {activeNodes.length === 0 && (
+                <p className="text-[10px] text-muted-foreground mt-1">Sin nodos activos en este silo.</p>
+              )}
             </div>
 
             <div className="col-span-1">
@@ -115,14 +139,16 @@ export default function SimulationPanel() {
 
           <div className="mt-4 flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              Nodo {formData.nodeIndex + 1} de {totalNodes} - {formData.type} - {formData.intensity}
+              {formData.selectedNodeId ? `${formData.selectedNodeId} - ${formData.type} - ${formData.intensity}` : 'Sin nodo seleccionado'}
             </p>
             <button
               onClick={handleInject}
+              disabled={activeNodes.length === 0 || !formData.selectedNodeId}
               className={cn(
                 'px-4 py-2 rounded-lg font-medium text-sm transition-all',
                 'bg-destructive/20 text-destructive hover:bg-destructive/30',
-                'border border-destructive/50 hover:border-destructive'
+                'border border-destructive/50 hover:border-destructive',
+                'disabled:opacity-40 disabled:cursor-not-allowed'
               )}
             >
               <Zap className="w-4 h-4 inline mr-2" />

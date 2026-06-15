@@ -28,6 +28,7 @@ export interface SensorNode {
     acousticLevel: number;
   };
   status: SiloStatus;
+  active?: boolean;
 }
 
 export interface Silo {
@@ -77,6 +78,7 @@ export interface Cereal {
 export interface StoredNode {
   id: string;
   position: { x: number; y: number; z: number };
+  active?: boolean;
 }
 
 export type StoredSilo = Omit<Silo, 'nodes'> & { nodes?: StoredNode[] };

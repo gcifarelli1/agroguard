@@ -1,15 +1,38 @@
 import { Silo } from '@/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import ChartTooltip from './ChartTooltip';
+import { getLayerForY } from '@/utils/nodeGeometry';
 
 interface DistributionChartProps {
   silo: Silo;
 }
 
+function isLayerMeasuring(layerIndex: number, fillRatio: number, layerCount: number): boolean {
+  if (fillRatio <= 0) return false;
+  if (layerIndex === 0) return true;
+  return fillRatio >= layerIndex / layerCount;
+}
+
 export default function DistributionChart({ silo }: DistributionChartProps) {
-  const normalCount = silo.nodes.filter((n) => n.status === 'normal').length;
-  const warningCount = silo.nodes.filter((n) => n.status === 'warning').length;
-  const criticalCount = silo.nodes.filter((n) => n.status === 'critical').length;
+  const fillRatio = silo.capacity > 0 ? silo.currentLevel / silo.capacity : 0;
+  const layerCount = silo.layerCount ?? 3;
+  const activeNodes = silo.nodes.filter((n) => {
+    if (n.active === false) return false;
+    const layer = getLayerForY(n.position.y, layerCount);
+    return isLayerMeasuring(layer, fillRatio, layerCount);
+  });
+
+  if (activeNodes.length === 0) {
+    return (
+      <div className="h-48 flex items-center justify-center">
+        <p className="text-xs text-muted-foreground">Sin nodos activos</p>
+      </div>
+    );
+  }
+
+  const normalCount = activeNodes.filter((n) => n.status === 'normal').length;
+  const warningCount = activeNodes.filter((n) => n.status === 'warning').length;
+  const criticalCount = activeNodes.filter((n) => n.status === 'critical').length;
 
   const data = [
     { name: 'Normal', value: normalCount, color: '#22c55e' },

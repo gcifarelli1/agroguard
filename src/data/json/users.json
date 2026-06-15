@@ -16,5 +16,11 @@
     "name": "Administrador Global",
     "role": "GLOBAL_ADMIN",
     "plantId": "ALL"
+  },
+  {
+    "id": "u-1781550664530-4sc",
+    "name": "Gerente Vela",
+    "role": "PLANT_MANAGER",
+    "plantId": "plant-1781549499551-hsc"
   }
 ]

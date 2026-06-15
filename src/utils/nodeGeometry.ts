@@ -9,13 +9,19 @@ export const MAX_NODES_PER_LAYER = 4;
 
 /**
  * Maps a Y world-coordinate to its nearest layer index.
- * normalizedY: 0 = bottom, 1 = top.
- * Uses nearest-center rounding clamped to [0, layerCount-1].
+ * Uses spacing-based round-trip-correct mapping clamped to [0, layerCount-1].
  */
 export function getLayerForY(y: number, layerCount: number): number {
-  const normalizedY = (y + SILO_H / 2) / SILO_H;
-  const raw = Math.round(normalizedY * (layerCount - 1));
+  const spacing = SILO_H / (layerCount + 1);
+  const raw = Math.round((y + SILO_H / 2) / spacing) - 1;
   return Math.max(0, Math.min(layerCount - 1, raw));
+}
+
+/**
+ * Returns the Y world-coordinate for the center of a given layer index.
+ */
+export function layerY(layer: number, layerCount: number): number {
+  return -SILO_H / 2 + (SILO_H / (layerCount + 1)) * (layer + 1);
 }
 
 /** Returns fresh baseline metrics matching the simulation baseline ranges. */
@@ -27,9 +33,9 @@ export function freshBaselineMetrics(): { temperature: number; humidity: number;
   };
 }
 
-/** Strips a SensorNode down to just its id and position for storage. */
+/** Strips a SensorNode down to its id, position, and active flag for storage. */
 export function toStoredNode(node: SensorNode): StoredNode {
-  return { id: node.id, position: node.position };
+  return { id: node.id, position: node.position, active: node.active ?? true };
 }
 
 /**
@@ -43,6 +49,7 @@ export function hydrateStoredNode(_siloId: string, stored: StoredNode): SensorNo
     position: stored.position,
     metrics: freshBaselineMetrics(),
     status: 'normal',
+    active: stored.active ?? true,
   };
 }
 

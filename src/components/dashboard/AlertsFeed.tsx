@@ -1,12 +1,14 @@
-import { useStore } from '@/store/useStore';
+import { useStore, getVisibleSiloIds } from '@/store/useStore';
 import { cn } from '@/utils/helpers';
 import { AlertTriangle, CheckCircle2, Clock, Wind, Bug, Loader2, Activity, Zap } from 'lucide-react';
 
 export default function AlertsFeed() {
   const { alerts, applyMitigation } = useStore();
+  const visibleSiloIds = useStore(getVisibleSiloIds);
 
-  const activeAlerts = alerts.filter((a) => a.status !== 'resolved').slice(0, 3);
-  const recentResolved = alerts.filter((a) => a.status === 'resolved').slice(0, 5);
+  const visibleAlerts = alerts.filter((a) => visibleSiloIds.includes(a.siloId));
+  const activeAlerts = visibleAlerts.filter((a) => a.status !== 'resolved').slice(0, 3);
+  const recentResolved = visibleAlerts.filter((a) => a.status === 'resolved').slice(0, 5);
 
   const getAlertTypeLabel = (type: string) => {
     if (type === 'HEAT') return { label: 'Calor excesivo', icon: Zap, color: 'text-red-400' };
@@ -121,7 +123,7 @@ export default function AlertsFeed() {
           </div>
           Historial Reciente
           <span className="text-[10px] font-mono text-muted-foreground ml-auto">
-            {alerts.length} total
+            {visibleAlerts.length} total
           </span>
         </h3>
 
