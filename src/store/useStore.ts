@@ -159,12 +159,14 @@ export const useStore = create<AppState>((set, get) => ({
     const intensityMultiplier =
       params.intensity === 'LOW' ? 1.5 : params.intensity === 'MEDIUM' ? 2.5 : 4;
 
+    const cereal = get().cereals.find((c) => c.id === targetSilo.cerealType);
+
     const newMetrics = {
       temperature: params.type === 'HEAT'
-        ? THRESHOLDS.temperature.warning + 5 * intensityMultiplier
+        ? (cereal?.tempWarning ?? THRESHOLDS.temperature.warning) + 5 * intensityMultiplier
         : node.metrics.temperature,
       humidity: params.type === 'HUMIDITY'
-        ? THRESHOLDS.humidity.warning + 2 * intensityMultiplier
+        ? (cereal?.humWarning ?? THRESHOLDS.humidity.warning) + 2 * intensityMultiplier
         : node.metrics.humidity,
       acousticLevel: params.type === 'BIO_ACOUSTIC'
         ? THRESHOLDS.acousticLevel.warning + 5 * intensityMultiplier
@@ -174,7 +176,7 @@ export const useStore = create<AppState>((set, get) => ({
     const updatedNode = {
       ...node,
       metrics: newMetrics,
-      status: getNodeStatus(newMetrics.temperature, newMetrics.humidity, newMetrics.acousticLevel),
+      status: getNodeStatus(newMetrics.temperature, newMetrics.humidity, newMetrics.acousticLevel, cereal),
     };
 
     const updatedSilos = silos.map((s) =>
@@ -207,6 +209,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     const silo = silos.find((s) => s.id === alert.siloId);
     const node = silo?.nodes.find((n) => n.id === alert.nodeId);
+    const cereal = get().cereals.find((c) => c.id === silo?.cerealType);
 
     set({ alerts: alerts.map((a) => a.id === alertId ? { ...a, status: 'resolving' as const } : a) });
 
@@ -226,16 +229,19 @@ export const useStore = create<AppState>((set, get) => ({
           return;
         }
 
+        const tempOptimal = cereal?.tempOptimal ?? THRESHOLDS.temperature.optimal;
+        const humOptimal  = cereal?.humOptimal  ?? THRESHOLDS.humidity.optimal;
+
         let resolved = false;
         let newMetrics = { ...currentNode.metrics };
 
         if (alert.type === 'HEAT' || alert.type === 'HUMIDITY') {
           newMetrics = {
             ...newMetrics,
-            temperature: Math.max(THRESHOLDS.temperature.optimal, newMetrics.temperature - 1.5),
-            humidity: Math.max(THRESHOLDS.humidity.optimal, newMetrics.humidity - 0.8),
+            temperature: Math.max(tempOptimal, newMetrics.temperature - 1.5),
+            humidity: Math.max(humOptimal, newMetrics.humidity - 0.8),
           };
-          if (newMetrics.temperature <= THRESHOLDS.temperature.optimal && newMetrics.humidity <= THRESHOLDS.humidity.optimal) {
+          if (newMetrics.temperature <= tempOptimal && newMetrics.humidity <= humOptimal) {
             resolved = true;
           }
         } else {
@@ -250,7 +256,7 @@ export const useStore = create<AppState>((set, get) => ({
 
         const newStatus = resolved
           ? 'normal' as const
-          : getNodeStatus(newMetrics.temperature, newMetrics.humidity, newMetrics.acousticLevel);
+          : getNodeStatus(newMetrics.temperature, newMetrics.humidity, newMetrics.acousticLevel, cereal);
 
         const updatedNode = { ...currentNode, metrics: newMetrics, status: newStatus };
         const newSilos = currentSilos.map((s) =>

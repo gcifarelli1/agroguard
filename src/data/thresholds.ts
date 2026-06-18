@@ -1,4 +1,4 @@
-import { SiloStatus } from '@/types';
+import { Cereal, SiloStatus } from '@/types';
 
 export const THRESHOLDS = {
   temperature: {
@@ -18,18 +18,24 @@ export const THRESHOLDS = {
 export function getNodeStatus(
   temperature: number,
   humidity: number,
-  acousticLevel: number
+  acousticLevel: number,
+  cereal?: Cereal
 ): SiloStatus {
+  const tempOptimal = cereal?.tempOptimal ?? THRESHOLDS.temperature.optimal;
+  const tempWarning = cereal?.tempWarning ?? THRESHOLDS.temperature.warning;
+  const humOptimal  = cereal?.humOptimal  ?? THRESHOLDS.humidity.optimal;
+  const humWarning  = cereal?.humWarning  ?? THRESHOLDS.humidity.warning;
+
   if (
-    temperature > THRESHOLDS.temperature.warning ||
-    humidity > THRESHOLDS.humidity.warning ||
+    temperature > tempWarning ||
+    humidity > humWarning ||
     acousticLevel > THRESHOLDS.acousticLevel.warning
   ) {
     return 'critical';
   }
   if (
-    temperature > THRESHOLDS.temperature.optimal ||
-    humidity > THRESHOLDS.humidity.optimal ||
+    temperature > tempOptimal ||
+    humidity > humOptimal ||
     acousticLevel > THRESHOLDS.acousticLevel.optimal
   ) {
     return 'warning';

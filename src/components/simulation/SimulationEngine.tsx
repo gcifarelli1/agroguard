@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '@/store/useStore';
-import { getNodeStatus, gaussianNoise } from '@/data/thresholds';
+import { getNodeStatus, gaussianNoise, THRESHOLDS } from '@/data/thresholds';
 import { AlertEvent } from '@/types';
 
 const SIMULATION_INTERVAL = 3000;
@@ -41,7 +41,9 @@ export default function SimulationEngine() {
     intervalRef.current = window.setInterval(() => {
       const state = useStore.getState();
       const currentSilos = state.silos;
+      const cereals = state.cereals;
       const updatedSilos = currentSilos.map((silo) => {
+        const cereal = cereals.find((c) => c.id === silo.cerealType);
         const updatedNodes = silo.nodes.map((node) => {
           const newMetrics = {
             temperature: Math.max(0, meanRevertingNoise(node.metrics.temperature, BASELINES.temperature, 0.08)),
@@ -51,7 +53,7 @@ export default function SimulationEngine() {
           return {
             ...node,
             metrics: newMetrics,
-            status: getNodeStatus(newMetrics.temperature, newMetrics.humidity, newMetrics.acousticLevel),
+            status: getNodeStatus(newMetrics.temperature, newMetrics.humidity, newMetrics.acousticLevel, cereal),
           };
         });
         return { ...silo, nodes: updatedNodes };
@@ -68,16 +70,21 @@ export default function SimulationEngine() {
         const anomalyTypes = ['HEAT', 'HUMIDITY', 'BIO_ACOUSTIC'] as const;
         const anomalyType = anomalyTypes[Math.floor(Math.random() * anomalyTypes.length)];
         const intensityMultiplier = 2 + Math.random() * 2;
+        const cereal = cereals.find((c) => c.id === randomSilo.cerealType);
 
         const anomalyMetrics = {
-          temperature: anomalyType === 'HEAT' ? 25 + intensityMultiplier : randomNode.metrics.temperature,
-          humidity: anomalyType === 'HUMIDITY' ? 15 + intensityMultiplier / 2 : randomNode.metrics.humidity,
-          acousticLevel: anomalyType === 'BIO_ACOUSTIC' ? 18 + intensityMultiplier * 1.5 : randomNode.metrics.acousticLevel,
+          temperature: anomalyType === 'HEAT'
+            ? (cereal?.tempWarning ?? THRESHOLDS.temperature.warning) + intensityMultiplier
+            : randomNode.metrics.temperature,
+          humidity: anomalyType === 'HUMIDITY'
+            ? (cereal?.humWarning ?? THRESHOLDS.humidity.warning) + intensityMultiplier / 2
+            : randomNode.metrics.humidity,
+          acousticLevel: anomalyType === 'BIO_ACOUSTIC' ? THRESHOLDS.acousticLevel.warning + intensityMultiplier * 1.5 : randomNode.metrics.acousticLevel,
         };
         const anomalyNode = {
           ...randomNode,
           metrics: anomalyMetrics,
-          status: getNodeStatus(anomalyMetrics.temperature, anomalyMetrics.humidity, anomalyMetrics.acousticLevel),
+          status: getNodeStatus(anomalyMetrics.temperature, anomalyMetrics.humidity, anomalyMetrics.acousticLevel, cereal),
         };
         const anomalyUpdatedSilos = updatedSilos.map((s, si) =>
           si !== randomSiloIndex
